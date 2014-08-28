@@ -1,0 +1,5 @@
+web:
+  build: .
+  command: KioskFoodServer
+  ports:
+    - "8080:8080"
