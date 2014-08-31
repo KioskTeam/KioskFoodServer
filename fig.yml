@@ -3,3 +3,9 @@ web:
   command: KioskFoodServer
   ports:
     - "8080:8080"
+  links:
+    - postgres
+  environment:
+    - DATABASE_URL=postgres://postgres@postgres_1/postgres?sslmode=disable
+postgres:
+  image: postgres:9.3.5
