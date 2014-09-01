@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
-	"time"
 )
 
 func main() {
@@ -28,30 +26,53 @@ func getPort() string {
 	return ":" + port
 }
 
-// Food stores basic data about foods
-type Food struct {
-	Name  string
-	Desc  string
-	Price int
-	Image string
+// Restaurant stores all the data
+type Restaurant struct {
+	Name       string
+	Address    string
+	Categories []FoodCategory
 }
 
-// DataList gets json-serialized to clients
-type DataList struct {
-	Checksome string
-	Foods     []Food
+// FoodCategory is a food category :-)
+type FoodCategory struct {
+	Name  string
+	Image string
+	Foods []Food
+}
+
+// Food stores basic data about foods
+type Food struct {
+	Name      string
+	Price     int
+	Thumbnail string
+	Pictures  []string
 }
 
 // Data is a temp stub for database
-var Data = DataList{
-	Checksome: strconv.FormatInt(time.Now().Unix(), 10),
-	Foods: []Food{
-		{"Pasta", "It's delicious", 1000, "/110.jpg"},
+var restaurant = Restaurant{
+	Name:    "Good Father",
+	Address: "Tehran",
+	Categories: []FoodCategory{
+		{
+			Name:  "Pizza",
+			Image: "/pizza.jpg",
+			Foods: []Food{
+				{
+					Name:      "Peperony",
+					Price:     10000,
+					Thumbnail: "/peperony-small.jpg",
+					Pictures: []string{
+						"/peperony1.jpg",
+						"/peperony2.jpg",
+					},
+				},
+			},
+		},
 	},
 }
 
 func latest(w http.ResponseWriter, r *http.Request) {
-	marshal, err := json.Marshal(Data)
+	marshal, err := json.Marshal(restaurant)
 	if err != nil {
 		panic(err)
 	}
