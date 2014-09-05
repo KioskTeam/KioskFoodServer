@@ -11,6 +11,11 @@
 			"Rev": "d895b7d4e840c1048395df986ca797bea46bb2c8"
 		},
 		{
+			"ImportPath": "github.com/jmoiron/sqlx",
+			"Comment": "sqlx-v1.0-38-g44ed2f4",
+			"Rev": "44ed2f4ee47dcddfb171b808b312ccb0e31fa3ba"
+		},
+		{
 			"ImportPath": "github.com/kylelemons/go-gypsy/yaml",
 			"Comment": "go.weekly.2011-11-02-17-g0ddb27c",
 			"Rev": "0ddb27ce74ade2ca988ec85587d636e10312dfc6"

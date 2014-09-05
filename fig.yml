@@ -1,11 +1,12 @@
 web:
   build: .
-  command: KioskFoodServer
+  command: sh -c "sleep 5 && goose up && KioskFoodServer"
   ports:
     - "8080:8080"
   links:
     - postgres
   environment:
     - DATABASE_URL=postgres://postgres@postgres_1/postgres?sslmode=disable
+    - PORT=8080
 postgres:
   image: postgres:9.3.5

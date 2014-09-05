@@ -24,7 +24,7 @@ CREATE TABLE foods (
   id               serial PRIMARY KEY,
   food_category_id integer NOT NULL REFERENCES food_categories,
   name             varchar(40) NOT NULL,
-  desciption       varchar(200),
+  description      varchar(200),
   price            integer,
   image_id         integer NOT NULL REFERENCES images,
 
