@@ -33,7 +33,7 @@ VALUES
 
 -- +goose Down
 -- SQL section 'Down' is executed when this migration is rolled back
-DELETE FROM images;
-DELETE FROM food_categories;
-DELETE FROM foods;
 DELETE FROM foods_images;
+DELETE FROM foods;
+DELETE FROM food_categories;
+DELETE FROM images;
