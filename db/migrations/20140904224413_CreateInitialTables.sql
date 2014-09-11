@@ -25,7 +25,7 @@ CREATE TABLE foods (
   food_category_id integer NOT NULL REFERENCES food_categories,
   name             varchar(40) NOT NULL,
   description      varchar(200),
-  price            integer,
+  price            integer NOT NULL,
   image_id         integer NOT NULL REFERENCES images,
 
   created_at timestamp DEFAULT current_timestamp,

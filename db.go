@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"os"
 
 	"github.com/jmoiron/sqlx"
@@ -33,61 +32,90 @@ var (
 )
 
 func getAllData() (Restaurant, error) {
-	rows, err := db.Query(allCatsSql)
+	cats, err := getAllCats()
 	if err != nil {
 		return Restaurant{}, err
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var (
-			id    int64
-			name  string
-			image string
-		)
-
-		err = rows.Scan(&id, &name, &image)
-		if err != nil {
-			return Restaurant{}, err
-		}
-
-		cat := FoodCategory{name, image, make([]Food, 0, 100)}
-
-		rows2, err := db.Query(foodsOfACatSql, id)
-		if err != nil {
-			return Restaurant{}, err
-		}
-		defer rows2.Close()
-
-		for rows2.Next() {
-			var (
-				id        int64
-				name      string
-				price     sql.NullInt64
-				thumbnail string
-			)
-
-			err = rows2.Scan(&id, &name, &price, &thumbnail)
-			if err != nil {
-				return Restaurant{}, err
-			}
-
-			food := Food{name, price, thumbnail, make([]string, 0, 100)}
-
-			var pics []struct{ Image string }
-			if err = db.Select(&pics, imagesOfAFoodSql, id); err != nil {
-				return Restaurant{}, err
-			}
-			for _, p := range pics {
-				food.Pictures = append(food.Pictures, p.Image)
-			}
-			cat.Foods = append(cat.Foods, food)
-		}
-
-		restaurant.Categories = append(restaurant.Categories, cat)
+	restaurant := Restaurant{
+		Name:       "Good Father",
+		Address:    "Tehran",
+		Categories: cats,
 	}
 
 	return restaurant, nil
+}
+
+func getAllCats() ([]FoodCategory, error) {
+	var (
+		cats []struct {
+			Id    int64
+			Name  string
+			Image string
+		}
+
+		result []FoodCategory
+	)
+
+	if err := db.Select(&cats, allCatsSql); err != nil {
+		return result, err
+	}
+
+	for _, cat := range cats {
+		foods, err := getFoodsOfCat(cat.Id)
+		if err != nil {
+			return result, err
+		}
+
+		result = append(result, FoodCategory{cat.Name, cat.Image, foods})
+	}
+
+	return result, nil
+}
+
+func getFoodsOfCat(id int64) ([]Food, error) {
+	var (
+		foods []struct {
+			Id        int64
+			Name      string
+			Price     int64
+			Thumbnail string
+		}
+
+		result []Food
+	)
+
+	if err := db.Select(&foods, foodsOfACatSql, id); err != nil {
+		return result, err
+	}
+
+	for _, food := range foods {
+		pics, err := getPicsOfFood(food.Id)
+		if err != nil {
+			return result, err
+		}
+
+		result = append(result, Food{food.Name, food.Price, food.Thumbnail, pics})
+	}
+
+	return result, nil
+}
+
+func getPicsOfFood(id int64) ([]string, error) {
+	var (
+		pics   []struct{ Image string }
+		result []string
+	)
+
+	if err := db.Select(&pics, imagesOfAFoodSql, id); err != nil {
+		return result, err
+	}
+
+	for _, p := range pics {
+		result = append(result, p.Image)
+	}
+
+	return result, nil
 }
 
 // Restaurant stores all the data
@@ -107,14 +135,7 @@ type FoodCategory struct {
 // Food stores basic data about foods
 type Food struct {
 	Name      string
-	Price     sql.NullInt64
+	Price     int64
 	Thumbnail string
 	Pictures  []string
-}
-
-// Data is a temp stub for database
-var restaurant = Restaurant{
-	Name:       "Good Father",
-	Address:    "Tehran",
-	Categories: make([]FoodCategory, 0, 100),
 }
