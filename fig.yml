@@ -8,5 +8,8 @@ web:
   environment:
     - DATABASE_URL=postgres://postgres@postgres_1/postgres?sslmode=disable
     - PORT=8080
+    - STATIC_ASSETS_PATH=/images
+  volumes_from:
+    - images
 postgres:
   image: postgres:9.3.5
