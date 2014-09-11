@@ -8,10 +8,7 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/api/latest", latest)
-
-	assetsDir := http.Dir(os.Getenv("STATIC_ASSETS_PATH"))
-	http.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(assetsDir)))
+	http.HandleFunc("/latest", latest)
 
 	port := getPort()
 	fmt.Println("listenning on", port)
