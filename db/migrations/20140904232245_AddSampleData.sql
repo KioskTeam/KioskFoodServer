@@ -8,11 +8,21 @@ VALUES
     (3, '/assets/IMG_0033.JPG'),
     (4, '/assets/IMG_0034.JPG');
 
+INSERT INTO restaurants (id, name, address)
+VALUES
+    (1, 'Good Father', 'Tehran');
+
 INSERT INTO food_categories (id, name, image_id)
 VALUES
     (1, 'cat 1', 1),
     (2, 'cat 2', 2),
     (3, 'cat 3', 3);
+
+INSERT INTO restaurants_food_categories (id, restaurant_id, food_category_id)
+VALUES
+    (1, 1, 1),
+    (2, 1, 2),
+    (3, 1, 3);
 
 INSERT INTO foods (id, food_category_id, name, description, price, image_id)
 VALUES
@@ -35,5 +45,7 @@ VALUES
 -- SQL section 'Down' is executed when this migration is rolled back
 DELETE FROM foods_images;
 DELETE FROM foods;
+DELETE FROM restaurants_food_categories;
 DELETE FROM food_categories;
+DELETE FROM restaurants;
 DELETE FROM images;
