@@ -3,10 +3,10 @@
 -- SQL in section 'Up' is executed when this migration is applied
 INSERT INTO images (id, url)
 VALUES
-    (1, '/sample1.png'),
-    (2, '/sample2.png'),
-    (3, '/sample3.png'),
-    (4, '/sample4.png');
+    (1, '/assets/IMG_0031.JPG'),
+    (2, '/assets/IMG_0032.JPG'),
+    (3, '/assets/IMG_0033.JPG'),
+    (4, '/assets/IMG_0034.JPG');
 
 INSERT INTO food_categories (id, name, image_id)
 VALUES
