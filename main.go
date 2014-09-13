@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 func main() {
-	http.HandleFunc("/latest", latest)
+	http.HandleFunc("/restaurant/", handleRestaurant)
 
 	port := getPort()
 	fmt.Println("listenning on", port)
@@ -26,14 +27,21 @@ func getPort() string {
 	return ":" + port
 }
 
-func latest(w http.ResponseWriter, r *http.Request) {
-	data, err := getRestaurant(1)
+func handleRestaurant(w http.ResponseWriter, r *http.Request) {
+	restaurantID, err := strconv.Atoi(r.URL.Path[len("/restaurant/"):])
 	if err != nil {
 		panic(err)
 	}
+
+	data, err := getRestaurant(int64(restaurantID))
+	if err != nil {
+		panic(err)
+	}
+
 	marshal, err := json.Marshal(data)
 	if err != nil {
 		panic(err)
 	}
+
 	w.Write(marshal)
 }
