@@ -7,13 +7,21 @@ import (
 	_ "github.com/lib/pq"
 )
 
-var (
-	db = sqlx.MustConnect("postgres", os.Getenv("DATABASE_URL"))
+var db = sqlx.MustConnect("postgres", os.Getenv("DATABASE_URL"))
 
-	allCatsSql = `
+const (
+	restaurantWithIdSql = `
+		SELECT r.name, r.address
+		FROM restaurants r
+		WHERE r.id = $1
+	`
+
+	catsOfARestaurantSql = `
     SELECT c.id, c.name, i.url image
-    FROM food_categories c, images i
+    FROM food_categories c, images i, restaurants_food_categories rc
     WHERE c.image_id = i.id
+			AND rc.food_category_id = c.id
+			AND rc.restaurant_id = $1
   `
 
 	foodsOfACatSql = `
@@ -31,22 +39,36 @@ var (
   `
 )
 
-func getAllData() (Restaurant, error) {
-	cats, err := getAllCats()
+func getRestaurant(id int64) (Restaurant, error) {
+	var (
+		restaurant struct {
+			Id      int64
+			Name    string
+			Address string
+		}
+
+		result Restaurant
+	)
+
+	if err := db.Get(&restaurant, restaurantWithIdSql, id); err != nil {
+		return result, err
+	}
+
+	cats, err := getCatsOfRestaurant(id)
 	if err != nil {
 		return Restaurant{}, err
 	}
 
-	restaurant := Restaurant{
-		Name:       "Good Father",
-		Address:    "Tehran",
+	result = Restaurant{
+		Name:       restaurant.Name,
+		Address:    restaurant.Address,
 		Categories: cats,
 	}
 
-	return restaurant, nil
+	return result, nil
 }
 
-func getAllCats() ([]FoodCategory, error) {
+func getCatsOfRestaurant(id int64) ([]FoodCategory, error) {
 	var (
 		cats []struct {
 			Id    int64
@@ -57,7 +79,7 @@ func getAllCats() ([]FoodCategory, error) {
 		result []FoodCategory
 	)
 
-	if err := db.Select(&cats, allCatsSql); err != nil {
+	if err := db.Select(&cats, catsOfARestaurantSql, id); err != nil {
 		return result, err
 	}
 

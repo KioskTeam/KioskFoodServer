@@ -27,7 +27,7 @@ func getPort() string {
 }
 
 func latest(w http.ResponseWriter, r *http.Request) {
-	data, err := getAllData()
+	data, err := getRestaurant(1)
 	if err != nil {
 		panic(err)
 	}
