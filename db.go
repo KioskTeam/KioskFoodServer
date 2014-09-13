@@ -56,7 +56,7 @@ func getRestaurant(id int64) (Restaurant, error) {
 
 	cats, err := getCatsOfRestaurant(id)
 	if err != nil {
-		return Restaurant{}, err
+		return result, err
 	}
 
 	result = Restaurant{
@@ -76,7 +76,7 @@ func getCatsOfRestaurant(id int64) ([]FoodCategory, error) {
 			Image string
 		}
 
-		result []FoodCategory
+		result = make([]FoodCategory, 0, 100)
 	)
 
 	if err := db.Select(&cats, catsOfARestaurantSql, id); err != nil {
@@ -104,7 +104,7 @@ func getFoodsOfCat(id int64) ([]Food, error) {
 			Thumbnail string
 		}
 
-		result []Food
+		result = make([]Food, 0, 100)
 	)
 
 	if err := db.Select(&foods, foodsOfACatSql, id); err != nil {
@@ -126,7 +126,7 @@ func getFoodsOfCat(id int64) ([]Food, error) {
 func getPicsOfFood(id int64) ([]string, error) {
 	var (
 		pics   []struct{ Image string }
-		result []string
+		result = make([]string, 0, 100)
 	)
 
 	if err := db.Select(&pics, imagesOfAFoodSql, id); err != nil {
