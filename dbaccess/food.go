@@ -1,5 +1,7 @@
 package dbaccess
 
+import "log"
+
 // Food stores basic data about foods
 type Food struct {
 	Name      string
@@ -15,30 +17,47 @@ const foodsOfACatSql = `
     AND f.food_category_id = $1
 `
 
-func getFoodsOfCat(id int64) ([]Food, error) {
-	var (
-		foods []struct {
+type foodResult struct {
+	Food
+	error
+}
+
+func getFoodsOfCat(id int64) (<-chan foodResult, <-chan error) {
+	c := make(chan foodResult)
+	errc := make(chan error, 1)
+
+	go func() {
+
+		type dbfood struct {
 			ID        int64
 			Name      string
 			Price     int64
 			Thumbnail string
 		}
 
-		result = make([]Food, 0, 100)
-	)
+		var foods []dbfood
 
-	if err := db.Select(&foods, foodsOfACatSql, id); err != nil {
-		return result, err
-	}
+		errc <- db.Select(&foods, foodsOfACatSql, id)
 
-	for _, food := range foods {
-		pics, err := getPicsOfFood(food.ID)
-		if err != nil {
-			return result, err
+		for _, food := range foods {
+			picsChan, picErrc := getPicsOfFood(food.ID)
+
+			err := <-picErrc
+			pics := []string{}
+
+			for pic := range picsChan {
+				if pic.error == nil {
+					pics = append(pics, pic.string)
+				} else {
+					log.Print(pic.error)
+				}
+			}
+
+			c <- foodResult{Food{food.Name, food.Price, food.Thumbnail, pics}, err}
 		}
 
-		result = append(result, Food{food.Name, food.Price, food.Thumbnail, pics})
-	}
+		close(c)
+	}()
 
-	return result, nil
+	return c, errc
 }

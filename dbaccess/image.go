@@ -7,12 +7,26 @@ const imagesOfAFoodSql = `
     AND fi.food_id = $1
 `
 
-func getPicsOfFood(id int64) ([]string, error) {
-	result := make([]string, 0, 100)
+type imageResult struct {
+	string
+	error
+}
 
-	if err := db.Select(&result, imagesOfAFoodSql, id); err != nil {
-		return nil, err
-	}
+func getPicsOfFood(id int64) (<-chan imageResult, <-chan error) {
+	c := make(chan imageResult)
+	errc := make(chan error, 1)
 
-	return result, nil
+	go func() {
+		result := make([]string, 0, 100)
+
+		errc <- db.Select(&result, imagesOfAFoodSql, id)
+
+		for i := 0; i < len(result); i++ {
+			c <- imageResult{result[i], nil}
+		}
+
+		close(c)
+	}()
+
+	return c, errc
 }

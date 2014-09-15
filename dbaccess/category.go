@@ -1,5 +1,7 @@
 package dbaccess
 
+import "log"
+
 // FoodCategory is a food category :-)
 type FoodCategory struct {
 	Name  string
@@ -31,9 +33,18 @@ func getCatsOfRestaurant(id int64) ([]FoodCategory, error) {
 	}
 
 	for _, cat := range cats {
-		foods, err := getFoodsOfCat(cat.ID)
-		if err != nil {
+		foodsChan, errChan := getFoodsOfCat(cat.ID)
+		if err := <-errChan; err != nil {
 			return result, err
+		}
+
+		foods := []Food{}
+		for food := range foodsChan {
+			if food.error == nil {
+				foods = append(foods, food.Food)
+			} else {
+				log.Print(food.error)
+			}
 		}
 
 		result = append(result, FoodCategory{cat.Name, cat.Image, foods})
