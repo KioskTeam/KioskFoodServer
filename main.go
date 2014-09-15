@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/KioskTeam/KioskFoodServer/dbaccess"
 )
 
 func main() {
@@ -33,7 +35,7 @@ func handleRestaurant(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	data, err := getRestaurant(int64(restaurantID))
+	data, err := dbaccess.GetRestaurant(int64(restaurantID))
 	if err != nil {
 		panic(err)
 	}
