@@ -4,8 +4,8 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/jmoiron/sqlx",
-			"Comment": "sqlx-v1.0-38-g44ed2f4",
-			"Rev": "44ed2f4ee47dcddfb171b808b312ccb0e31fa3ba"
+			"Comment": "sqlx-v1.0-41-gc7e35f7",
+			"Rev": "c7e35f73e09a00677e3a338c5aab5bc047854fff"
 		},
 		{
 			"ImportPath": "github.com/lib/pq",

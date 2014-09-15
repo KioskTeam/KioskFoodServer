@@ -2,6 +2,7 @@ package sqlx
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 
@@ -126,6 +127,9 @@ func mapperFor(i interface{}) *reflectx.Mapper {
 		return mapper()
 	}
 }
+
+var _scannerInterface = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
+var _valuerInterface = reflect.TypeOf((*driver.Valuer)(nil)).Elem()
 
 // Row is a reimplementation of sql.Row in order to gain access to the underlying
 // sql.Rows.Columns() data, necessary for StructScan.
@@ -591,7 +595,7 @@ func Select(q Queryer, dest interface{}, query string, args ...interface{}) erro
 	}
 	// if something happens here, we want to make sure the rows are Closed
 	defer rows.Close()
-	return StructScan(rows, dest)
+	return scanAll(rows, dest, false)
 }
 
 // Get does a QueryRow using the provided Queryer, and StructScan the resulting
@@ -599,7 +603,7 @@ func Select(q Queryer, dest interface{}, query string, args ...interface{}) erro
 // Get will return sql.ErrNoRows like row.Scan would.
 func Get(q Queryer, dest interface{}, query string, args ...interface{}) error {
 	r := q.QueryRowx(query, args...)
-	return r.StructScan(dest)
+	return r.scanAny(dest, false)
 }
 
 // LoadFile exec's every statement in a file (as a single call to Exec).
@@ -645,8 +649,7 @@ func (r *Row) MapScan(dest map[string]interface{}) error {
 	return MapScan(r, dest)
 }
 
-// StructScan a single Row into dest.
-func (r *Row) StructScan(dest interface{}) error {
+func (r *Row) scanAny(dest interface{}, structOnly bool) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -660,15 +663,36 @@ func (r *Row) StructScan(dest interface{}) error {
 		return errors.New("nil pointer passed to StructScan destination")
 	}
 
-	direct := reflect.Indirect(v)
-	_, err := baseType(direct.Type(), reflect.Struct)
-	if err != nil {
-		return err
+	base := reflectx.Deref(v.Type())
+	// We have a serious thing to consider here;  if this struct is a Scanner,
+	// I think we should scan into it directly as a type and not a struct.  This
+	// brings back some "isScanner" detection we got rid of previously, and makes
+	// things a little bit more confusing, but it allows for use of NullString
+	// and its ilk
+	isStruct := base.Kind() == reflect.Struct
+	_, isScanner := dest.(sql.Scanner)
+
+	// only error out here if we require a struct but didn't get one
+	if structOnly {
+		if !isStruct {
+			return fmt.Errorf("expected %s but got %s", reflect.Struct, base.Kind())
+		}
+		if isScanner {
+			return fmt.Errorf("structscan expects a struct dest but the provided struct type %s implements scanner", base.Name())
+		}
 	}
 
 	columns, err := r.Columns()
 	if err != nil {
 		return err
+	}
+
+	if !isStruct && len(columns) > 1 {
+		return fmt.Errorf("non-struct or Scanner dest type %s with >1 columns (%d) in result", base.Kind(), len(columns))
+	}
+
+	if !isStruct || isScanner {
+		return r.Scan(dest)
 	}
 
 	m := r.Mapper
@@ -686,6 +710,11 @@ func (r *Row) StructScan(dest interface{}) error {
 	}
 	// scan into the struct field pointers and append to our results
 	return r.Scan(values...)
+}
+
+// StructScan a single Row into dest.
+func (r *Row) StructScan(dest interface{}) error {
+	return r.scanAny(dest, true)
 }
 
 // SliceScan a row, returning a []interface{} with values similar to MapScan.
@@ -757,13 +786,23 @@ type rowsi interface {
 	Scan(...interface{}) error
 }
 
-// StructScan all rows from an sql.Rows or an sqlx.Rows into the dest slice.
-// StructScan will scan in the entire rows result, so if you need do not want to
-// allocate structs for the entire result, use Queryx and see sqlx.Rows.StructScan.
-// If rowsi is sqlx.Rows, it will use its mapper, otherwise it will use the default.
-func StructScan(rows rowsi, dest interface{}) error {
+// scanAll scans all rows into a destination, which must be a slice of any
+// type.  If the destination slice type is a Struct, then StructScan will be
+// used on each row.  If the destination is some other kind of base type, then
+// each row must only have one column which can scan into that type.  This
+// allows you to do something like:
+//
+//    rows, _ := db.Query("select id from people;")
+//    var ids []int
+//    scanAll(rows, &ids, false)
+//
+// and ids will be a list of the id results.  I realize that this is a desirable
+// interface to expose to users, but for now it will only be exposed via changes
+// to `Get` and `Select`.  The reason that this has been implemented like this is
+// this is the only way to not duplicate reflect work in the new API while
+// maintaining backwards compatibility.
+func scanAll(rows rowsi, dest interface{}, structOnly bool) error {
 	var v, vp reflect.Value
-	var isPtr bool
 
 	value := reflect.ValueOf(dest)
 
@@ -774,17 +813,32 @@ func StructScan(rows rowsi, dest interface{}) error {
 	if value.IsNil() {
 		return errors.New("nil pointer passed to StructScan destination")
 	}
-
 	direct := reflect.Indirect(value)
 
 	slice, err := baseType(value.Type(), reflect.Slice)
 	if err != nil {
 		return err
 	}
-	isPtr = slice.Elem().Kind() == reflect.Ptr
-	base, err := baseType(slice.Elem(), reflect.Struct)
-	if err != nil {
-		return err
+
+	isPtr := slice.Elem().Kind() == reflect.Ptr
+	base := reflectx.Deref(slice.Elem())
+	isStruct := base.Kind() == reflect.Struct
+	// check if a pointer to the slice type implements sql.Scanner; if it does, we
+	// will treat this as a base type slice rather than a struct slice;  eg, we will
+	// treat []sql.NullString as a single row rather than a struct with 2 scan targets.
+	isScanner := reflect.PtrTo(base).Implements(_scannerInterface)
+
+	// if we must have a struct and the base type isn't a struct, return an error.
+	// this maintains API compatibility for StructScan, which is only important
+	// because StructScan should involve structs and it feels gross to add more
+	// weird junk to it.
+	if structOnly {
+		if !isStruct {
+			return fmt.Errorf("expected %s but got %s", reflect.Struct, base.Kind())
+		}
+		if isScanner {
+			return fmt.Errorf("structscan expects a struct dest but the provided struct type %s implements scanner", base.Name())
+		}
 	}
 
 	columns, err := rows.Columns()
@@ -792,42 +846,76 @@ func StructScan(rows rowsi, dest interface{}) error {
 		return err
 	}
 
-	var m *reflectx.Mapper
-	switch rows.(type) {
-	case *Rows:
-		m = rows.(*Rows).Mapper
-	default:
-		m = mapper()
+	// if it's a base type make sure it only has 1 column;  if not return an error
+	if !isStruct && len(columns) > 1 {
+		return fmt.Errorf("non-struct dest type %s with >1 columns (%d)", base.Kind(), len(columns))
 	}
 
-	fields := m.TraversalsByName(base, columns)
-	// if we are not unsafe and are missing fields, return an error
-	if f, err := missingFields(fields); err != nil && !isUnsafe(rows) {
-		return fmt.Errorf("missing destination name %s", columns[f])
-	}
-	values := make([]interface{}, len(columns))
+	if isStruct && !isScanner {
+		var values []interface{}
+		var m *reflectx.Mapper
 
-	for rows.Next() {
-		// create a new struct type (which returns PtrTo) and indirect it
-		vp = reflect.New(base)
-		v = reflect.Indirect(vp)
-
-		err = fieldsByTraversal(v, fields, values, true)
-
-		// scan into the struct field pointers and append to our results
-		err = rows.Scan(values...)
-		if err != nil {
-			return err
+		switch rows.(type) {
+		case *Rows:
+			m = rows.(*Rows).Mapper
+		default:
+			m = mapper()
 		}
 
-		if isPtr {
-			direct.Set(reflect.Append(direct, vp))
-		} else {
-			direct.Set(reflect.Append(direct, v))
+		fields := m.TraversalsByName(base, columns)
+		// if we are not unsafe and are missing fields, return an error
+		if f, err := missingFields(fields); err != nil && !isUnsafe(rows) {
+			return fmt.Errorf("missing destination name %s", columns[f])
+		}
+		values = make([]interface{}, len(columns))
+
+		for rows.Next() {
+			// create a new struct type (which returns PtrTo) and indirect it
+			vp = reflect.New(base)
+			v = reflect.Indirect(vp)
+
+			err = fieldsByTraversal(v, fields, values, true)
+
+			// scan into the struct field pointers and append to our results
+			err = rows.Scan(values...)
+			if err != nil {
+				return err
+			}
+
+			if isPtr {
+				direct.Set(reflect.Append(direct, vp))
+			} else {
+				direct.Set(reflect.Append(direct, v))
+			}
+		}
+	} else {
+		for rows.Next() {
+			vp = reflect.New(base)
+			err = rows.Scan(vp.Interface())
+			// append
+			if isPtr {
+				direct.Set(reflect.Append(direct, vp))
+			} else {
+				direct.Set(reflect.Append(direct, reflect.Indirect(vp)))
+			}
 		}
 	}
 
 	return rows.Err()
+}
+
+// FIXME: StructScan was the very first bit of API in sqlx, and now unfortunately
+// it doesn't really feel like it's named properly.  There is an incongruency
+// between this and the way that StructScan (which might better be ScanStruct
+// anyway) works on a rows object.
+
+// StructScan all rows from an sql.Rows or an sqlx.Rows into the dest slice.
+// StructScan will scan in the entire rows result, so if you need do not want to
+// allocate structs for the entire result, use Queryx and see sqlx.Rows.StructScan.
+// If rows is sqlx.Rows, it will use its mapper, otherwise it will use the default.
+func StructScan(rows rowsi, dest interface{}) error {
+	return scanAll(rows, dest, true)
+
 }
 
 // reflect helpers

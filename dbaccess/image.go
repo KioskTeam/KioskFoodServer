@@ -8,17 +8,10 @@ const imagesOfAFoodSql = `
 `
 
 func getPicsOfFood(id int64) ([]string, error) {
-	var (
-		pics   []struct{ Image string }
-		result = make([]string, 0, 100)
-	)
+	result := make([]string, 0, 100)
 
-	if err := db.Select(&pics, imagesOfAFoodSql, id); err != nil {
-		return result, err
-	}
-
-	for _, p := range pics {
-		result = append(result, p.Image)
+	if err := db.Select(&result, imagesOfAFoodSql, id); err != nil {
+		return nil, err
 	}
 
 	return result, nil
