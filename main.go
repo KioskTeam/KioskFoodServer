@@ -35,12 +35,17 @@ func handleRestaurant(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	data, err := dbaccess.GetRestaurant(int64(restaurantID))
-	if err != nil {
+	dataChan, errChan := dbaccess.GetRestaurant(int64(restaurantID))
+	if err := <-errChan; err != nil {
 		panic(err)
 	}
 
-	marshal, err := json.Marshal(data)
+	data := <-dataChan
+	if data.Error != nil {
+		panic(data.Error)
+	}
+
+	marshal, err := json.Marshal(data.Restaurant)
 	if err != nil {
 		panic(err)
 	}

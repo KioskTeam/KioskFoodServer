@@ -17,38 +17,44 @@ const catsOfARestaurantSql = `
 		AND rc.restaurant_id = $1
 `
 
-func getCatsOfRestaurant(id int64) ([]FoodCategory, error) {
-	var (
-		cats []struct {
-			ID    int64
-			Name  string
-			Image string
-		}
+type catResult struct {
+	FoodCategory
+	error
+}
 
-		result = make([]FoodCategory, 0, 100)
-	)
+func getCatsOfRestaurant(id int64) (<-chan catResult, <-chan error) {
+	c := make(chan catResult)
+	errc := make(chan error, 1)
 
-	if err := db.Select(&cats, catsOfARestaurantSql, id); err != nil {
-		return result, err
-	}
-
-	for _, cat := range cats {
-		foodsChan, errChan := getFoodsOfCat(cat.ID)
-		if err := <-errChan; err != nil {
-			return result, err
-		}
-
-		foods := []Food{}
-		for food := range foodsChan {
-			if food.error == nil {
-				foods = append(foods, food.Food)
-			} else {
-				log.Print(food.error)
+	go func() {
+		var (
+			cats []struct {
+				ID    int64
+				Name  string
+				Image string
 			}
+		)
+
+		errc <- db.Select(&cats, catsOfARestaurantSql, id)
+
+		for _, cat := range cats {
+			foodsChan, errChan := getFoodsOfCat(cat.ID)
+
+			err := <-errChan
+			foods := []Food{}
+
+			for food := range foodsChan {
+				if food.error == nil {
+					foods = append(foods, food.Food)
+				} else {
+					log.Print(food.error)
+				}
+			}
+
+			c <- catResult{FoodCategory{cat.Name, cat.Image, foods}, err}
 		}
 
-		result = append(result, FoodCategory{cat.Name, cat.Image, foods})
-	}
-
-	return result, nil
+		close(c)
+	}()
+	return c, errc
 }

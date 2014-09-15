@@ -1,5 +1,7 @@
 package dbaccess
 
+import "log"
+
 // Restaurant stores all the data
 type Restaurant struct {
 	Name       string
@@ -13,31 +15,43 @@ const restaurantWithIDSql = `
   WHERE r.id = $1
 `
 
+type resResult struct {
+	Restaurant
+	Error error
+}
+
 // GetRestaurant returns all the data of a restaurant with the specified id.
-func GetRestaurant(id int64) (Restaurant, error) {
-	var (
-		restaurant struct {
-			Name    string
-			Address string
+func GetRestaurant(id int64) (<-chan resResult, <-chan error) {
+	c := make(chan resResult)
+	errc := make(chan error, 1)
+
+	go func() {
+		var (
+			restaurant struct {
+				Name    string
+				Address string
+			}
+		)
+
+		errc <- db.Get(&restaurant, restaurantWithIDSql, id)
+
+		catsChan, errChan := getCatsOfRestaurant(id)
+
+		err := <-errChan
+		cats := []FoodCategory{}
+
+		for cat := range catsChan {
+			if cat.error == nil {
+				cats = append(cats, cat.FoodCategory)
+			} else {
+				log.Print(cat.error)
+			}
 		}
 
-		result Restaurant
-	)
+		c <- resResult{Restaurant{restaurant.Name, restaurant.Address, cats}, err}
 
-	if err := db.Get(&restaurant, restaurantWithIDSql, id); err != nil {
-		return result, err
-	}
+		close(c)
+	}()
 
-	cats, err := getCatsOfRestaurant(id)
-	if err != nil {
-		return result, err
-	}
-
-	result = Restaurant{
-		Name:       restaurant.Name,
-		Address:    restaurant.Address,
-		Categories: cats,
-	}
-
-	return result, nil
+	return c, errc
 }
