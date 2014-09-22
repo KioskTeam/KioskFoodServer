@@ -4,14 +4,18 @@ import "log"
 
 // Food stores basic data about foods
 type Food struct {
-	Name      string
-	Price     int64
-	Thumbnail string
-	Pictures  []string
+	Name           string
+	Name_fa        string
+	Description    string
+	Description_fa string
+	Price          int64
+	Thumbnail      string
+	Pictures       []string
 }
 
 const foodsOfACatSql = `
-  SELECT f.id, f.name, f.price, i.url thumbnail
+  SELECT f.id, f.name, f.name_fa, f.description, f.description_fa, f.price,
+		i.url thumbnail
   FROM foods f, images i
   WHERE f.image_id = i.id
     AND f.food_category_id = $1
@@ -29,10 +33,13 @@ func getFoodsOfCat(id int64) (<-chan foodResult, <-chan error) {
 	go func() {
 
 		type dbfood struct {
-			ID        int64
-			Name      string
-			Price     int64
-			Thumbnail string
+			ID             int64
+			Name           string
+			Name_fa        string
+			Description    string
+			Description_fa string
+			Price          int64
+			Thumbnail      string
 		}
 
 		var foods []dbfood
@@ -53,7 +60,7 @@ func getFoodsOfCat(id int64) (<-chan foodResult, <-chan error) {
 				}
 			}
 
-			c <- foodResult{Food{food.Name, food.Price, food.Thumbnail, pics}, err}
+			c <- foodResult{Food{food.Name, food.Name_fa, food.Description, food.Description_fa, food.Price, food.Thumbnail, pics}, err}
 		}
 
 		close(c)

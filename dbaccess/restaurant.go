@@ -5,12 +5,14 @@ import "log"
 // Restaurant stores all the data
 type Restaurant struct {
 	Name       string
+	Name_fa    string
 	Address    string
+	Address_fa string
 	Categories []FoodCategory
 }
 
 const restaurantWithIDSql = `
-  SELECT r.name, r.address
+  SELECT r.name, r.name_fa, r.address, r.address_fa
   FROM restaurants r
   WHERE r.id = $1
 `
@@ -28,8 +30,10 @@ func GetRestaurant(id int64) (<-chan resResult, <-chan error) {
 	go func() {
 		var (
 			restaurant struct {
-				Name    string
-				Address string
+				Name       string
+				Name_fa    string
+				Address    string
+				Address_fa string
 			}
 		)
 
@@ -48,7 +52,7 @@ func GetRestaurant(id int64) (<-chan resResult, <-chan error) {
 			}
 		}
 
-		c <- resResult{Restaurant{restaurant.Name, restaurant.Address, cats}, err}
+		c <- resResult{Restaurant{restaurant.Name, restaurant.Name_fa, restaurant.Address, restaurant.Address_fa, cats}, err}
 
 		close(c)
 	}()
