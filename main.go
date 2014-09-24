@@ -77,5 +77,6 @@ func handleRestaurant(w http.ResponseWriter, r *http.Request) {
 		responseCache.Unlock()
 	}
 
+	w.Header().Add("Content-Type", "application/json; charset=utf-8")
 	w.Write(response)
 }

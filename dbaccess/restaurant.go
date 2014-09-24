@@ -20,6 +20,7 @@ type (
 		Address    string
 		Address_fa string
 		Categories []FoodCategory
+		Galery     []GaleryImage
 	}
 
 	resResult struct {
@@ -84,10 +85,23 @@ func init() {
 					}
 				}
 
+				galeryChan, errChan := getGaleryOfRestaurant(req.id)
+
+				err = <-errChan
+				galeryImages := []GaleryImage{}
+
+				for galImg := range galeryChan {
+					if galImg.error == nil {
+						galeryImages = append(galeryImages, galImg.GaleryImage)
+					} else {
+						log.Print(galImg.error)
+					}
+				}
+
 				resie := Restaurant{
 					restaurant.Name, restaurant.Name_fa,
 					restaurant.Address, restaurant.Address_fa,
-					cats,
+					cats, galeryImages,
 				}
 				req.resultChan <- resResult{resie, err}
 
