@@ -22,40 +22,54 @@ type resResult struct {
 	Error error
 }
 
+type resRequest struct {
+	id         int64
+	resultChan chan<- resResult
+	errChan    chan<- error
+}
+
+var resRequestsChan = make(chan resRequest)
+
+func init() {
+	for i := 0; i < 20; i++ {
+		go func() {
+			for req := range resRequestsChan {
+				var restaurant struct {
+					Name       string
+					Name_fa    string
+					Address    string
+					Address_fa string
+				}
+
+				req.errChan <- db.Get(&restaurant, restaurantWithIDSql, req.id)
+
+				catsChan, errChan := getCatsOfRestaurant(req.id)
+
+				err := <-errChan
+				cats := []FoodCategory{}
+
+				for cat := range catsChan {
+					if cat.error == nil {
+						cats = append(cats, cat.FoodCategory)
+					} else {
+						log.Print(cat.error)
+					}
+				}
+
+				req.resultChan <- resResult{Restaurant{restaurant.Name, restaurant.Name_fa, restaurant.Address, restaurant.Address_fa, cats}, err}
+
+				close(req.resultChan)
+			}
+		}()
+	}
+}
+
 // GetRestaurant returns all the data of a restaurant with the specified id.
 func GetRestaurant(id int64) (<-chan resResult, <-chan error) {
 	c := make(chan resResult)
 	errc := make(chan error, 1)
 
-	go func() {
-		var (
-			restaurant struct {
-				Name       string
-				Name_fa    string
-				Address    string
-				Address_fa string
-			}
-		)
-
-		errc <- db.Get(&restaurant, restaurantWithIDSql, id)
-
-		catsChan, errChan := getCatsOfRestaurant(id)
-
-		err := <-errChan
-		cats := []FoodCategory{}
-
-		for cat := range catsChan {
-			if cat.error == nil {
-				cats = append(cats, cat.FoodCategory)
-			} else {
-				log.Print(cat.error)
-			}
-		}
-
-		c <- resResult{Restaurant{restaurant.Name, restaurant.Name_fa, restaurant.Address, restaurant.Address_fa, cats}, err}
-
-		close(c)
-	}()
+	resRequestsChan <- resRequest{id, c, errc}
 
 	return c, errc
 }
