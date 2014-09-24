@@ -1,14 +1,10 @@
 package dbaccess
 
-import "log"
-
-// FoodCategory is a food category :-)
-type FoodCategory struct {
-	Name    string
-	Name_fa string
-	Image   string
-	Foods   []Food
-}
+import (
+	"log"
+	"sync"
+	"time"
+)
 
 const catsOfARestaurantSql = `
   SELECT c.id, c.name, c.name_fa, i.url image
@@ -17,47 +13,88 @@ const catsOfARestaurantSql = `
 		AND c.restaurant_id = $1
 `
 
-type catResult struct {
-	FoodCategory
-	error
-}
+type (
+	// FoodCategory is a food category :-)
+	FoodCategory struct {
+		Name    string
+		Name_fa string
+		Image   string
+		Foods   []Food
+	}
 
-type catRequest struct {
-	id         int64
-	resultChan chan<- catResult
-	errChan    chan<- error
-}
+	catResult struct {
+		FoodCategory
+		error
+	}
 
-var catRequestsChan = make(chan catRequest)
+	catRequest struct {
+		id         int64
+		resultChan chan<- catResult
+		errChan    chan<- error
+	}
+
+	catCacheStore struct {
+		time time.Time
+		cats []FoodCategory
+	}
+)
+
+var (
+	catRequestsChan = make(chan catRequest)
+	catCache        = struct {
+		sync.RWMutex
+		c map[int64]catCacheStore
+	}{c: make(map[int64]catCacheStore)}
+)
 
 func init() {
 	for i := 0; i < 20; i++ {
 		go func() {
 			for req := range catRequestsChan {
-				var cats []struct {
-					ID      int64
-					Name    string
-					Name_fa string
-					Image   string
-				}
+				catCache.RLock()
+				cache, ok := catCache.c[req.id]
+				catCache.RUnlock()
 
-				req.errChan <- db.Select(&cats, catsOfARestaurantSql, req.id)
+				if ok && cacheIsRecent(cache.time) {
+					req.errChan <- nil
+					for _, cat := range cache.cats {
+						req.resultChan <- catResult{cat, nil}
+					}
+				} else {
+					allCaties := make([]FoodCategory, 0, 10)
 
-				for _, cat := range cats {
-					foodsChan, errChan := getFoodsOfCat(cat.ID)
-
-					err := <-errChan
-					foods := []Food{}
-
-					for food := range foodsChan {
-						if food.error == nil {
-							foods = append(foods, food.Food)
-						} else {
-							log.Print(food.error)
-						}
+					var cats []struct {
+						ID      int64
+						Name    string
+						Name_fa string
+						Image   string
 					}
 
-					req.resultChan <- catResult{FoodCategory{cat.Name, cat.Name_fa, cat.Image, foods}, err}
+					req.errChan <- db.Select(&cats, catsOfARestaurantSql, req.id)
+
+					for _, cat := range cats {
+						foodsChan, errChan := getFoodsOfCat(cat.ID)
+
+						err := <-errChan
+						foods := []Food{}
+
+						for food := range foodsChan {
+							if food.error == nil {
+								foods = append(foods, food.Food)
+							} else {
+								log.Print(food.error)
+							}
+						}
+
+						catie := FoodCategory{cat.Name, cat.Name_fa, cat.Image, foods}
+						allCaties = append(allCaties, catie)
+
+						req.resultChan <- catResult{catie, err}
+					}
+
+					catCache.Lock()
+					catCache.c[req.id] = catCacheStore{time.Now(), allCaties}
+					catCache.Unlock()
 				}
 
 				close(req.resultChan)
