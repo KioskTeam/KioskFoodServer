@@ -12,21 +12,34 @@ type imageResult struct {
 	error
 }
 
+type imageRequest struct {
+	id         int64
+	resultChan chan<- imageResult
+	errChan    chan<- error
+}
+
+var imageRequestsChan = make(chan imageRequest)
+
+func init() {
+	for i := 0; i < 20; i++ {
+		go func() {
+			for req := range imageRequestsChan {
+				result := make([]string, 0, 100)
+
+				req.errChan <- db.Select(&result, imagesOfAFoodSql, req.id)
+
+				for _, img := range result {
+					req.resultChan <- imageResult{img, nil}
+				}
+
+				close(req.resultChan)
+			}
+		}()
+	}
+}
+
 func getPicsOfFood(id int64) (<-chan imageResult, <-chan error) {
-	c := make(chan imageResult)
-	errc := make(chan error, 1)
-
-	go func() {
-		result := make([]string, 0, 100)
-
-		errc <- db.Select(&result, imagesOfAFoodSql, id)
-
-		for i := 0; i < len(result); i++ {
-			c <- imageResult{result[i], nil}
-		}
-
-		close(c)
-	}()
-
-	return c, errc
+	r, e := make(chan imageResult), make(chan error, 1)
+	imageRequestsChan <- imageRequest{id, r, e}
+	return r, e
 }
