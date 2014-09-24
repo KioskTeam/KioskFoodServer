@@ -1,15 +1,10 @@
 package dbaccess
 
-import "log"
-
-// Restaurant stores all the data
-type Restaurant struct {
-	Name       string
-	Name_fa    string
-	Address    string
-	Address_fa string
-	Categories []FoodCategory
-}
+import (
+	"log"
+	"sync"
+	"time"
+)
 
 const restaurantWithIDSql = `
   SELECT r.name, r.name_fa, r.address, r.address_fa
@@ -17,46 +12,86 @@ const restaurantWithIDSql = `
   WHERE r.id = $1
 `
 
-type resResult struct {
-	Restaurant
-	Error error
-}
+type (
+	// Restaurant stores all the data
+	Restaurant struct {
+		Name       string
+		Name_fa    string
+		Address    string
+		Address_fa string
+		Categories []FoodCategory
+	}
 
-type resRequest struct {
-	id         int64
-	resultChan chan<- resResult
-	errChan    chan<- error
-}
+	resResult struct {
+		Restaurant
+		Error error
+	}
 
-var resRequestsChan = make(chan resRequest)
+	resRequest struct {
+		id         int64
+		resultChan chan<- resResult
+		errChan    chan<- error
+	}
+
+	resCacheStore struct {
+		time time.Time
+		res  Restaurant
+	}
+)
+
+var (
+	resRequestsChan = make(chan resRequest)
+	resCache        = struct {
+		sync.RWMutex
+		c map[int64]resCacheStore
+	}{c: make(map[int64]resCacheStore)}
+)
 
 func init() {
 	for i := 0; i < 20; i++ {
 		go func() {
 			for req := range resRequestsChan {
-				var restaurant struct {
-					Name       string
-					Name_fa    string
-					Address    string
-					Address_fa string
-				}
+				resCache.RLock()
+				cache, ok := resCache.c[req.id]
+				resCache.RUnlock()
 
-				req.errChan <- db.Get(&restaurant, restaurantWithIDSql, req.id)
-
-				catsChan, errChan := getCatsOfRestaurant(req.id)
-
-				err := <-errChan
-				cats := []FoodCategory{}
-
-				for cat := range catsChan {
-					if cat.error == nil {
-						cats = append(cats, cat.FoodCategory)
-					} else {
-						log.Print(cat.error)
+				if ok && cacheIsRecent(cache.time) {
+					req.errChan <- nil
+					req.resultChan <- resResult{cache.res, nil}
+				} else {
+					var restaurant struct {
+						Name       string
+						Name_fa    string
+						Address    string
+						Address_fa string
 					}
-				}
 
-				req.resultChan <- resResult{Restaurant{restaurant.Name, restaurant.Name_fa, restaurant.Address, restaurant.Address_fa, cats}, err}
+					req.errChan <- db.Get(&restaurant, restaurantWithIDSql, req.id)
+
+					catsChan, errChan := getCatsOfRestaurant(req.id)
+
+					err := <-errChan
+					cats := []FoodCategory{}
+
+					for cat := range catsChan {
+						if cat.error == nil {
+							cats = append(cats, cat.FoodCategory)
+						} else {
+							log.Print(cat.error)
+						}
+					}
+
+					resie := Restaurant{
+						restaurant.Name, restaurant.Name_fa,
+						restaurant.Address, restaurant.Address_fa,
+						cats,
+					}
+					req.resultChan <- resResult{resie, err}
+
+					resCache.Lock()
+					resCache.c[req.id] = resCacheStore{time.Now(), resie}
+					resCache.Unlock()
+				}
 
 				close(req.resultChan)
 			}
