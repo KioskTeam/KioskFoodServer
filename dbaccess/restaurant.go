@@ -55,7 +55,7 @@ func init() {
 				cache, ok := resCache.c[req.id]
 				resCache.RUnlock()
 
-				if ok && cacheIsRecent(cache.time) {
+				if ok && CacheIsRecent(cache.time) {
 					req.errChan <- nil
 					req.resultChan <- resResult{cache.res, nil}
 				} else {

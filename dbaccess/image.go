@@ -48,7 +48,7 @@ func init() {
 				cache, ok := imageCache.c[req.id]
 				imageCache.RUnlock()
 
-				if ok && cacheIsRecent(cache.time) {
+				if ok && CacheIsRecent(cache.time) {
 					req.errChan <- nil
 					result = cache.images
 				} else {

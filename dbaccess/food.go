@@ -59,7 +59,7 @@ func init() {
 				cache, ok := foodCache.c[req.id]
 				foodCache.RUnlock()
 
-				if ok && cacheIsRecent(cache.time) {
+				if ok && CacheIsRecent(cache.time) {
 					req.errChan <- nil
 					for _, food := range cache.foods {
 						req.resultChan <- foodResult{food, nil}

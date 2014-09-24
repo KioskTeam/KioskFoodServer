@@ -55,7 +55,7 @@ func init() {
 				cache, ok := catCache.c[req.id]
 				catCache.RUnlock()
 
-				if ok && cacheIsRecent(cache.time) {
+				if ok && CacheIsRecent(cache.time) {
 					req.errChan <- nil
 					for _, cat := range cache.cats {
 						req.resultChan <- catResult{cat, nil}
