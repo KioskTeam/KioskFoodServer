@@ -1,5 +1,10 @@
 package dbaccess
 
+import (
+	"sync"
+	"time"
+)
+
 const imagesOfAFoodSql = `
   SELECT i.url image
   FROM images i, foods_images fi
@@ -7,26 +12,51 @@ const imagesOfAFoodSql = `
     AND fi.food_id = $1
 `
 
-type imageResult struct {
-	string
-	error
-}
+type (
+	imageResult struct {
+		string
+		error
+	}
 
-type imageRequest struct {
-	id         int64
-	resultChan chan<- imageResult
-	errChan    chan<- error
-}
+	imageRequest struct {
+		id         int64
+		resultChan chan<- imageResult
+		errChan    chan<- error
+	}
 
-var imageRequestsChan = make(chan imageRequest)
+	imageCacheStore struct {
+		time   time.Time
+		images []string
+	}
+)
+
+var (
+	imageRequestsChan = make(chan imageRequest)
+	imageCache        = struct {
+		sync.RWMutex
+		c map[int64]imageCacheStore
+	}{c: make(map[int64]imageCacheStore)}
+)
 
 func init() {
 	for i := 0; i < 20; i++ {
 		go func() {
 			for req := range imageRequestsChan {
-				result := make([]string, 0, 100)
+				var result []string
 
-				req.errChan <- db.Select(&result, imagesOfAFoodSql, req.id)
+				imageCache.RLock()
+				cache, ok := imageCache.c[req.id]
+				imageCache.RUnlock()
+
+				if ok && cacheIsRecent(cache.time) {
+					req.errChan <- nil
+					result = cache.images
+				} else {
+					req.errChan <- db.Select(&result, imagesOfAFoodSql, req.id)
+					imageCache.Lock()
+					imageCache.c[req.id] = imageCacheStore{time.Now(), result}
+					imageCache.Unlock()
+				}
 
 				for _, img := range result {
 					req.resultChan <- imageResult{img, nil}
