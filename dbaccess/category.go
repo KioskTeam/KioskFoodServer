@@ -33,9 +33,16 @@ type (
 		errChan    chan<- error
 	}
 
+	dbcat struct {
+		ID      int64
+		Name    string
+		Name_fa string
+		Image   string
+	}
+
 	catCacheStore struct {
 		time time.Time
-		cats []FoodCategory
+		cats []dbcat
 	}
 )
 
@@ -51,51 +58,41 @@ func init() {
 	for i := 0; i < 20; i++ {
 		go func() {
 			for req := range catRequestsChan {
+				var cats []dbcat
+
 				catCache.RLock()
 				cache, ok := catCache.c[req.id]
 				catCache.RUnlock()
 
 				if ok && CacheIsRecent(cache.time) {
 					req.errChan <- nil
-					for _, cat := range cache.cats {
-						req.resultChan <- catResult{cat, nil}
-					}
+					cats = cache.cats
 				} else {
-					allCaties := make([]FoodCategory, 0, 10)
-
-					var cats []struct {
-						ID      int64
-						Name    string
-						Name_fa string
-						Image   string
-					}
-
 					req.errChan <- db.Select(&cats, catsOfARestaurantSql, req.id)
+				}
 
-					for _, cat := range cats {
-						foodsChan, errChan := getFoodsOfCat(cat.ID)
+				for _, cat := range cats {
+					foodsChan, errChan := getFoodsOfCat(cat.ID)
 
-						err := <-errChan
-						foods := []Food{}
+					err := <-errChan
+					foods := []Food{}
 
-						for food := range foodsChan {
-							if food.error == nil {
-								foods = append(foods, food.Food)
-							} else {
-								log.Print(food.error)
-							}
+					for food := range foodsChan {
+						if food.error == nil {
+							foods = append(foods, food.Food)
+						} else {
+							log.Print(food.error)
 						}
-
-						catie := FoodCategory{cat.Name, cat.Name_fa, cat.Image, foods}
-						allCaties = append(allCaties, catie)
-
-						req.resultChan <- catResult{catie, err}
 					}
 
-					catCache.Lock()
-					catCache.c[req.id] = catCacheStore{time.Now(), allCaties}
-					catCache.Unlock()
+					catie := FoodCategory{cat.Name, cat.Name_fa, cat.Image, foods}
+
+					req.resultChan <- catResult{catie, err}
 				}
+
+				catCache.Lock()
+				catCache.c[req.id] = catCacheStore{time.Now(), cats}
+				catCache.Unlock()
 
 				close(req.resultChan)
 			}

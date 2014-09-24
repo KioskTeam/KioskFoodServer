@@ -37,9 +37,19 @@ type (
 		errChan    chan<- error
 	}
 
+	dbfood struct {
+		ID             int64
+		Name           string
+		Name_fa        string
+		Description    string
+		Description_fa string
+		Price          int64
+		Thumbnail      string
+	}
+
 	foodCacheStore struct {
 		time  time.Time
-		foods []Food
+		foods []dbfood
 	}
 )
 
@@ -55,61 +65,45 @@ func init() {
 	for i := 0; i < 20; i++ {
 		go func() {
 			for req := range foodRequestsChan {
+				var foods []dbfood
+
 				foodCache.RLock()
 				cache, ok := foodCache.c[req.id]
 				foodCache.RUnlock()
 
 				if ok && CacheIsRecent(cache.time) {
 					req.errChan <- nil
-					for _, food := range cache.foods {
-						req.resultChan <- foodResult{food, nil}
-					}
+					foods = cache.foods
 				} else {
-					allFoods := make([]Food, 0, 10)
-
-					type dbfood struct {
-						ID             int64
-						Name           string
-						Name_fa        string
-						Description    string
-						Description_fa string
-						Price          int64
-						Thumbnail      string
-					}
-
-					var foods []dbfood
-
 					req.errChan <- db.Select(&foods, foodsOfACatSql, req.id)
+				}
 
-					for _, food := range foods {
-						picsChan, picErrc := getPicsOfFood(food.ID)
+				for _, food := range foods {
+					picsChan, picErrc := getPicsOfFood(food.ID)
 
-						err := <-picErrc
-						pics := []string{}
+					err := <-picErrc
+					pics := []string{}
 
-						for pic := range picsChan {
-							if pic.error == nil {
-								pics = append(pics, pic.string)
-							} else {
-								log.Print(pic.error)
-							}
+					for pic := range picsChan {
+						if pic.error == nil {
+							pics = append(pics, pic.string)
+						} else {
+							log.Print(pic.error)
 						}
-
-						foodie := Food{
-							food.Name, food.Name_fa,
-							food.Description, food.Description_fa,
-							food.Price, food.Thumbnail, pics,
-						}
-
-						allFoods = append(allFoods, foodie)
-
-						req.resultChan <- foodResult{foodie, err}
 					}
 
-					foodCache.Lock()
-					foodCache.c[req.id] = foodCacheStore{time.Now(), allFoods}
-					foodCache.Unlock()
+					foodie := Food{
+						food.Name, food.Name_fa,
+						food.Description, food.Description_fa,
+						food.Price, food.Thumbnail, pics,
+					}
+
+					req.resultChan <- foodResult{foodie, err}
 				}
+
+				foodCache.Lock()
+				foodCache.c[req.id] = foodCacheStore{time.Now(), foods}
+				foodCache.Unlock()
 
 				close(req.resultChan)
 			}

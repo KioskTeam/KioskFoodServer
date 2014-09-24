@@ -33,9 +33,16 @@ type (
 		errChan    chan<- error
 	}
 
+	dbrestaurant struct {
+		Name       string
+		Name_fa    string
+		Address    string
+		Address_fa string
+	}
+
 	resCacheStore struct {
 		time time.Time
-		res  Restaurant
+		res  dbrestaurant
 	}
 )
 
@@ -51,47 +58,42 @@ func init() {
 	for i := 0; i < 20; i++ {
 		go func() {
 			for req := range resRequestsChan {
+				var restaurant dbrestaurant
+
 				resCache.RLock()
 				cache, ok := resCache.c[req.id]
 				resCache.RUnlock()
 
 				if ok && CacheIsRecent(cache.time) {
 					req.errChan <- nil
-					req.resultChan <- resResult{cache.res, nil}
+					restaurant = cache.res
 				} else {
-					var restaurant struct {
-						Name       string
-						Name_fa    string
-						Address    string
-						Address_fa string
-					}
-
 					req.errChan <- db.Get(&restaurant, restaurantWithIDSql, req.id)
-
-					catsChan, errChan := getCatsOfRestaurant(req.id)
-
-					err := <-errChan
-					cats := []FoodCategory{}
-
-					for cat := range catsChan {
-						if cat.error == nil {
-							cats = append(cats, cat.FoodCategory)
-						} else {
-							log.Print(cat.error)
-						}
-					}
-
-					resie := Restaurant{
-						restaurant.Name, restaurant.Name_fa,
-						restaurant.Address, restaurant.Address_fa,
-						cats,
-					}
-					req.resultChan <- resResult{resie, err}
-
-					resCache.Lock()
-					resCache.c[req.id] = resCacheStore{time.Now(), resie}
-					resCache.Unlock()
 				}
+
+				catsChan, errChan := getCatsOfRestaurant(req.id)
+
+				err := <-errChan
+				cats := []FoodCategory{}
+
+				for cat := range catsChan {
+					if cat.error == nil {
+						cats = append(cats, cat.FoodCategory)
+					} else {
+						log.Print(cat.error)
+					}
+				}
+
+				resie := Restaurant{
+					restaurant.Name, restaurant.Name_fa,
+					restaurant.Address, restaurant.Address_fa,
+					cats,
+				}
+				req.resultChan <- resResult{resie, err}
+
+				resCache.Lock()
+				resCache.c[req.id] = resCacheStore{time.Now(), restaurant}
+				resCache.Unlock()
 
 				close(req.resultChan)
 			}
